@@ -105,6 +105,11 @@ HARDWARE_VARIANT ?= arduino
 HARDWARE_SUB_VARIANT ?= standard
 MCU              ?= atmega328p
 
+#Invent-A-Part RigidBoard
+else ifeq  ($(HARDWARE_MOTHERBOARD),43)
+HARDWARE_VARIANT ?= arduino
+MCU              ?= atmega2560
+
 #Gen6
 else ifeq  ($(HARDWARE_MOTHERBOARD),5)
 HARDWARE_VARIANT ?= Gen6

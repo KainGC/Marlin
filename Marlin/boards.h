@@ -50,6 +50,7 @@
 #define BOARD_LEAPFROG          999  // Leapfrog
 #define BOARD_WITBOX            41   // bq WITBOX
 #define BOARD_HEPHESTOS         42   // bq Prusa i3 Hephestos
+#define BOARD_RIGIDBOARD        43   // RigidBoard from Invent-A-Part
 #define BOARD_BAM_DICE          401  // 2PrintBeta BAM&DICE with STK drivers
 #define BOARD_BAM_DICE_DUE      402  // 2PrintBeta BAM&DICE Due with STK drivers
 

@@ -110,6 +110,8 @@
   #include "pins_WITBOX.h"
 #elif MB(HEPHESTOS)
   #include "pins_HEPHESTOS.h"
+#elif MB(RIGIDBOARD)
+  #include "pins_RIGIDBOARD.h"
 #elif MB(BAM_DICE)
   #include "pins_RAMPS_13.h"
 #elif MB(BAM_DICE_DUE)

@@ -597,6 +597,11 @@ void setup()
 {
   setup_killpin();
   setup_powerhold();
+
+  #ifdef DRIVER_RESET_FIX
+    disableStepperDrivers();
+  #endif
+
   MYSERIAL.begin(BAUDRATE);
   SERIAL_PROTOCOLLNPGM("start");
   SERIAL_ECHO_START;
@@ -649,6 +654,10 @@ void setup()
 
   #if defined(CONTROLLERFAN_PIN) && CONTROLLERFAN_PIN > -1
     SET_OUTPUT(CONTROLLERFAN_PIN); //Set pin used for driver cooling fan
+  #endif
+
+  #ifdef DRIVER_RESET_FIX
+    enableStepperDrivers();
   #endif
 
   #ifdef DIGIPOT_I2C
@@ -4718,3 +4727,20 @@ void calculate_volumetric_multipliers() {
   for (int i=0; i<EXTRUDERS; i++)
     volumetric_multiplier[i] = calculate_volumetric_multiplier(filament_size[i]);
 }
+
+#ifdef DRIVER_RESET_FIX
+void disableStepperDrivers() 
+{
+  pinMode(DRIVER_RESET_PIN, OUTPUT);    // set to output
+  digitalWrite(DRIVER_RESET_PIN, LOW);  // drive it down to hold in reset motor
+
+  return;
+}
+
+void enableStepperDrivers()
+{
+  pinMode(DRIVER_RESET_PIN, INPUT);     // set to input, which allows it to be
+
+  return;
+}
+#endif //DRIVER_RESET_FIX

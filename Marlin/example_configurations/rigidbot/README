@@ -1,0 +1,32 @@
+Compiling Marlin for the RigidBoard controller from Invent-A-Part, Inc.
+=======================================================================
+
+1. Copy the Configuration.h file from this directory, back two directories.  This will overwrite
+the default Configuration.h from Marlin.
+
+2. Copy the Configuration_adv.h file from this directory, back two directories.  This will overwrite
+the default Configuration_adv.h from Marlin.
+
+3. Everyone will need to edit the Configuration.h file to select appropriate values for:
+   a. EXTRUDERS - set to 1 or 2 depending on how many extruders you have
+   b. RIGIDBOT_SIZE - set to 1 for the Regular 10"x10", or 2 for the Big 12"x16" RigidBot
+
+4. Infrequently, some will want to edit Configuration.h to alter these values:
+   a. TEMP_SENSOR_* - if you have replaced the thermistor with a different type
+   b. HEATER_*_MAXTEMP - if you a replacement extruder that can be run > 250deg C
+   c. THERMAL_RUNAWAY_* - if you want to change the thermal runaway protection settings
+   d. ENABLE_AUTO_BED_LEVELING - if you have a bed height z-probe installed
+   e. Z_PROBE_SLED - if your z-probe is on a docking sled like those designed by Charles Bell
+
+5. The following values can be set in your firmware before uploading, but they can also be set
+at run-time and saved in EEPROM (with the g-code "M500")
+   a. DEFAULT_K[pid]                or "M301 P_ I_ D_"
+   b. DEFAULT_bedK[pid]             or "M304 P_ I_ D_"
+   c. HOMING_FEEDRATE               or "M210 X_ Y_ Z_ E_"
+   d. DEFAULT_MAX_FEEDRATE          or "M203 X_ Y_ Z_ E_"
+   e. DEFAULT_MAX_ACCELERATION      or "M201 X_ Y_ Z_ E_"
+   f. DEFAULT_XYJERK                or "M205 X_"
+   g. DEFAULT_ZJERK                 or "M205 Z_"
+   h. DEFAULT_EJERK                 or "M205 E_"
+
+6. Compile and upload your firmware using the Arduino IDE, or via "make" on the command line. 
