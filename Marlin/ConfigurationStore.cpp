@@ -3,7 +3,7 @@
  *
  * Configuration and EEPROM storage
  *
- * V15 EEPROM Layout:
+ * V16 EEPROM Layout:
  *
  *  ver
  *  axis_steps_per_unit (x4)
@@ -11,13 +11,21 @@
  *  max_acceleration_units_per_sq_second (x4)
  *  acceleration
  *  retract_acceleration
+ *  travel_acceleration
  *  minimumfeedrate
  *  mintravelfeedrate
  *  minsegmenttime
  *  max_xy_jerk
  *  max_z_jerk
  *  max_e_jerk
- *  add_homing (x3)
+ *  home_offset (x3)
+ *
+ * Mesh bed leveling:
+ *  active
+ *  mesh_num_x
+ *  mesh_num_y
+ *  z_values[][]
+ *  zprobe_zoffset
  *
  * DELTA:
  *  endstop_adj (x3)
@@ -32,7 +40,6 @@
  *  absPreheatHotendTemp
  *  absPreheatHPBTemp
  *  absPreheatFanSpeed
- *  zprobe_zoffset
  *
  * PIDTEMP:
  *  Kp[0], Ki[0], Kd[0], Kc[0]
@@ -60,6 +67,9 @@
  *
  *  filament_size (x4)
  *
+ * Z_DUAL_ENDSTOPS
+ *  z_endstop_adj
+ *
  */
 #include "Marlin.h"
 #include "language.h"
@@ -67,6 +77,10 @@
 #include "temperature.h"
 #include "ultralcd.h"
 #include "ConfigurationStore.h"
+
+#if defined(MESH_BED_LEVELING)
+   #include "mesh_bed_leveling.h"
+#endif  // MESH_BED_LEVELING
 
 void _EEPROM_writeData(int &pos, uint8_t* value, uint8_t size) {
   uint8_t c;
@@ -104,7 +118,7 @@ void _EEPROM_readData(int &pos, uint8_t* value, uint8_t size) {
 // wrong data being written to the variables.
 // ALSO:  always make sure the variables in the Store and retrieve sections are in the same order.
 
-#define EEPROM_VERSION "V15"
+#define EEPROM_VERSION "V18"
 
 #ifdef EEPROM_SETTINGS
 
@@ -118,19 +132,51 @@ void Config_StoreSettings()  {
   EEPROM_WRITE_VAR(i, max_acceleration_units_per_sq_second);
   EEPROM_WRITE_VAR(i, acceleration);
   EEPROM_WRITE_VAR(i, retract_acceleration);
+  EEPROM_WRITE_VAR(i, travel_acceleration);
   EEPROM_WRITE_VAR(i, minimumfeedrate);
   EEPROM_WRITE_VAR(i, mintravelfeedrate);
   EEPROM_WRITE_VAR(i, minsegmenttime);
   EEPROM_WRITE_VAR(i, max_xy_jerk);
   EEPROM_WRITE_VAR(i, max_z_jerk);
   EEPROM_WRITE_VAR(i, max_e_jerk);
-  EEPROM_WRITE_VAR(i, add_homing);
+  EEPROM_WRITE_VAR(i, home_offset);
+
+  uint8_t mesh_num_x = 3;
+  uint8_t mesh_num_y = 3;
+  #ifdef MESH_BED_LEVELING
+    // Compile time test that sizeof(mbl.z_values) is as expected
+    typedef char c_assert[(sizeof(mbl.z_values) == MESH_NUM_X_POINTS*MESH_NUM_Y_POINTS*sizeof(dummy)) ? 1 : -1];
+    mesh_num_x = MESH_NUM_X_POINTS;
+    mesh_num_y = MESH_NUM_Y_POINTS;
+    EEPROM_WRITE_VAR(i, mbl.active);
+    EEPROM_WRITE_VAR(i, mesh_num_x);
+    EEPROM_WRITE_VAR(i, mesh_num_y);
+    EEPROM_WRITE_VAR(i, mbl.z_values);
+  #else
+    uint8_t dummy_uint8 = 0;
+    EEPROM_WRITE_VAR(i, dummy_uint8);
+    EEPROM_WRITE_VAR(i, mesh_num_x);
+    EEPROM_WRITE_VAR(i, mesh_num_y);
+    dummy = 0.0f;
+    for (int q=0; q<mesh_num_x*mesh_num_y; q++) {
+      EEPROM_WRITE_VAR(i, dummy);
+    }
+  #endif // MESH_BED_LEVELING
+
+  #ifndef ENABLE_AUTO_BED_LEVELING
+    float zprobe_zoffset = 0;
+  #endif
+  EEPROM_WRITE_VAR(i, zprobe_zoffset);
 
   #ifdef DELTA
     EEPROM_WRITE_VAR(i, endstop_adj);               // 3 floats
     EEPROM_WRITE_VAR(i, delta_radius);              // 1 float
     EEPROM_WRITE_VAR(i, delta_diagonal_rod);        // 1 float
     EEPROM_WRITE_VAR(i, delta_segments_per_second); // 1 float
+  #elif defined(Z_DUAL_ENDSTOPS)
+    EEPROM_WRITE_VAR(i, z_endstop_adj);            // 1 floats
+    dummy = 0.0f;
+    for (int q=5; q--;) EEPROM_WRITE_VAR(i, dummy);
   #else
     dummy = 0.0f;
     for (int q=6; q--;) EEPROM_WRITE_VAR(i, dummy);
@@ -147,7 +193,7 @@ void Config_StoreSettings()  {
   EEPROM_WRITE_VAR(i, absPreheatHotendTemp);
   EEPROM_WRITE_VAR(i, absPreheatHPBTemp);
   EEPROM_WRITE_VAR(i, absPreheatFanSpeed);
-  EEPROM_WRITE_VAR(i, zprobe_zoffset);
+
 
   for (int e = 0; e < 4; e++) {
 
@@ -217,8 +263,6 @@ void Config_StoreSettings()  {
     EEPROM_WRITE_VAR(i, dummy);
   }
 
-  int storageSize = i;
-
   char ver2[4] = EEPROM_VERSION;
   int j = EEPROM_OFFSET;
   EEPROM_WRITE_VAR(j, ver2); // validate data
@@ -248,25 +292,61 @@ void Config_RetrieveSettings() {
     EEPROM_READ_VAR(i, max_feedrate);
     EEPROM_READ_VAR(i, max_acceleration_units_per_sq_second);
 
-        // steps per sq second need to be updated to agree with the units per sq second (as they are what is used in the planner)
+    // steps per sq second need to be updated to agree with the units per sq second (as they are what is used in the planner)
     reset_acceleration_rates();
 
     EEPROM_READ_VAR(i, acceleration);
     EEPROM_READ_VAR(i, retract_acceleration);
+    EEPROM_READ_VAR(i, travel_acceleration);
     EEPROM_READ_VAR(i, minimumfeedrate);
     EEPROM_READ_VAR(i, mintravelfeedrate);
     EEPROM_READ_VAR(i, minsegmenttime);
     EEPROM_READ_VAR(i, max_xy_jerk);
     EEPROM_READ_VAR(i, max_z_jerk);
     EEPROM_READ_VAR(i, max_e_jerk);
-    EEPROM_READ_VAR(i, add_homing);
+    EEPROM_READ_VAR(i, home_offset);
+
+    uint8_t mesh_num_x = 0;
+    uint8_t mesh_num_y = 0;
+    #if defined(MESH_BED_LEVELING)
+      EEPROM_READ_VAR(i, mbl.active);
+      EEPROM_READ_VAR(i, mesh_num_x);
+      EEPROM_READ_VAR(i, mesh_num_y);
+      if (mesh_num_x != MESH_NUM_X_POINTS ||
+          mesh_num_y != MESH_NUM_Y_POINTS) {
+        mbl.reset();
+        for (int q=0; q<mesh_num_x*mesh_num_y; q++) {
+          EEPROM_READ_VAR(i, dummy);
+        }
+      } else {
+        EEPROM_READ_VAR(i, mbl.z_values);
+      }
+    #else
+      uint8_t dummy_uint8 = 0;
+      EEPROM_READ_VAR(i, dummy_uint8);
+      EEPROM_READ_VAR(i, mesh_num_x);
+      EEPROM_READ_VAR(i, mesh_num_y);
+      for (int q=0; q<mesh_num_x*mesh_num_y; q++) {
+        EEPROM_READ_VAR(i, dummy);
+      }
+    #endif  // MESH_BED_LEVELING
+
+    #ifndef ENABLE_AUTO_BED_LEVELING
+      float zprobe_zoffset = 0;
+    #endif
+    EEPROM_READ_VAR(i, zprobe_zoffset);
 
     #ifdef DELTA
       EEPROM_READ_VAR(i, endstop_adj);                // 3 floats
       EEPROM_READ_VAR(i, delta_radius);               // 1 float
       EEPROM_READ_VAR(i, delta_diagonal_rod);         // 1 float
       EEPROM_READ_VAR(i, delta_segments_per_second);  // 1 float
+    #elif defined(Z_DUAL_ENDSTOPS)
+      EEPROM_READ_VAR(i, z_endstop_adj);
+      dummy = 0.0f;
+      for (int q=5; q--;) EEPROM_READ_VAR(i, dummy);
     #else
+      dummy = 0.0f;
       for (int q=6; q--;) EEPROM_READ_VAR(i, dummy);
     #endif
 
@@ -281,7 +361,6 @@ void Config_RetrieveSettings() {
     EEPROM_READ_VAR(i, absPreheatHotendTemp);
     EEPROM_READ_VAR(i, absPreheatHPBTemp);
     EEPROM_READ_VAR(i, absPreheatFanSpeed);
-    EEPROM_READ_VAR(i, zprobe_zoffset);
 
     #ifdef PIDTEMP
       for (int e = 0; e < 4; e++) { // 4 = max extruders currently supported by Marlin
@@ -365,7 +444,7 @@ void Config_ResetDefault() {
   float tmp1[] = DEFAULT_AXIS_STEPS_PER_UNIT;
   float tmp2[] = DEFAULT_MAX_FEEDRATE;
   long tmp3[] = DEFAULT_MAX_ACCELERATION;
-  for (int i = 0; i < NUM_AXIS; i++) {
+  for (uint16_t i = 0; i < NUM_AXIS; i++) {
     axis_steps_per_unit[i] = tmp1[i];
     max_feedrate[i] = tmp2[i];
     max_acceleration_units_per_sq_second[i] = tmp3[i];
@@ -380,13 +459,22 @@ void Config_ResetDefault() {
 
   acceleration = DEFAULT_ACCELERATION;
   retract_acceleration = DEFAULT_RETRACT_ACCELERATION;
+  travel_acceleration = DEFAULT_TRAVEL_ACCELERATION;
   minimumfeedrate = DEFAULT_MINIMUMFEEDRATE;
   minsegmenttime = DEFAULT_MINSEGMENTTIME;
   mintravelfeedrate = DEFAULT_MINTRAVELFEEDRATE;
   max_xy_jerk = DEFAULT_XYJERK;
   max_z_jerk = DEFAULT_ZJERK;
   max_e_jerk = DEFAULT_EJERK;
-  add_homing[X_AXIS] = add_homing[Y_AXIS] = add_homing[Z_AXIS] = 0;
+  home_offset[X_AXIS] = home_offset[Y_AXIS] = home_offset[Z_AXIS] = 0;
+
+  #ifdef MESH_BED_LEVELING
+    mbl.active = 0;
+  #endif
+
+  #ifdef ENABLE_AUTO_BED_LEVELING
+    zprobe_zoffset = -Z_PROBE_OFFSET_FROM_EXTRUDER;
+  #endif
 
   #ifdef DELTA
     endstop_adj[X_AXIS] = endstop_adj[Y_AXIS] = endstop_adj[Z_AXIS] = 0;
@@ -394,6 +482,8 @@ void Config_ResetDefault() {
     delta_diagonal_rod =  DELTA_DIAGONAL_ROD;
     delta_segments_per_second =  DELTA_SEGMENTS_PER_SECOND;
     recalc_delta_settings(delta_radius, delta_diagonal_rod);
+  #elif defined(Z_DUAL_ENDSTOPS)
+    z_endstop_adj = 0;
   #endif
 
   #ifdef ULTIPANEL
@@ -403,10 +493,6 @@ void Config_ResetDefault() {
     absPreheatHotendTemp = ABS_PREHEAT_HOTEND_TEMP;
     absPreheatHPBTemp = ABS_PREHEAT_HPB_TEMP;
     absPreheatFanSpeed = ABS_PREHEAT_FAN_SPEED;
-  #endif
-
-  #ifdef ENABLE_AUTO_BED_LEVELING
-    zprobe_zoffset = -Z_PROBE_OFFSET_FROM_EXTRUDER;
   #endif
 
   #ifdef DOGLCD
@@ -516,11 +602,12 @@ void Config_PrintSettings(bool forReplay) {
   SERIAL_EOL;
   SERIAL_ECHO_START;
   if (!forReplay) {
-    SERIAL_ECHOLNPGM("Acceleration: S=acceleration, T=retract acceleration");
+    SERIAL_ECHOLNPGM("Accelerations: P=printing, R=retract and T=travel");
     SERIAL_ECHO_START;
   }
-  SERIAL_ECHOPAIR("  M204 S", acceleration );
-  SERIAL_ECHOPAIR(" T", retract_acceleration);
+  SERIAL_ECHOPAIR("  M204 P", acceleration );
+  SERIAL_ECHOPAIR(" R", retract_acceleration);
+  SERIAL_ECHOPAIR(" T", travel_acceleration);
   SERIAL_EOL;
 
   SERIAL_ECHO_START;
@@ -541,9 +628,9 @@ void Config_PrintSettings(bool forReplay) {
     SERIAL_ECHOLNPGM("Home offset (mm):");
     SERIAL_ECHO_START;
   }
-  SERIAL_ECHOPAIR("  M206 X", add_homing[X_AXIS] );
-  SERIAL_ECHOPAIR(" Y", add_homing[Y_AXIS] );
-  SERIAL_ECHOPAIR(" Z", add_homing[Z_AXIS] );
+  SERIAL_ECHOPAIR("  M206 X", home_offset[X_AXIS] );
+  SERIAL_ECHOPAIR(" Y", home_offset[Y_AXIS] );
+  SERIAL_ECHOPAIR(" Z", home_offset[Z_AXIS] );
   SERIAL_EOL;
 
   #ifdef DELTA
@@ -563,6 +650,14 @@ void Config_PrintSettings(bool forReplay) {
     SERIAL_ECHOPAIR(" R", delta_radius );
     SERIAL_ECHOPAIR(" S", delta_segments_per_second );
     SERIAL_EOL;
+  #elif defined(Z_DUAL_ENDSTOPS)
+    SERIAL_ECHO_START;
+    if (!forReplay) {
+      SERIAL_ECHOLNPGM("Z2 Endstop adjustement (mm):");
+      SERIAL_ECHO_START;
+    }
+    SERIAL_ECHOPAIR("  M666 Z", z_endstop_adj );
+    SERIAL_EOL;  
   #endif // DELTA
 
   #ifdef PIDTEMP
@@ -650,15 +745,20 @@ void Config_PrintSettings(bool forReplay) {
     }
   }
 
-  #ifdef CUSTOM_M_CODES
+  #ifdef ENABLE_AUTO_BED_LEVELING
     SERIAL_ECHO_START;
-    if (!forReplay) {
-      SERIAL_ECHOLNPGM("Z-Probe Offset (mm):");
-      SERIAL_ECHO_START;
-    }
-    SERIAL_ECHO("   M");
-    SERIAL_ECHO(CUSTOM_M_CODE_SET_Z_PROBE_OFFSET);
-    SERIAL_ECHOPAIR(" Z", -zprobe_zoffset);
+    #ifdef CUSTOM_M_CODES
+      if (!forReplay) {
+        SERIAL_ECHOLNPGM("Z-Probe Offset (mm):");
+        SERIAL_ECHO_START;
+      }
+      SERIAL_ECHOPAIR("   M", (unsigned long)CUSTOM_M_CODE_SET_Z_PROBE_OFFSET);
+      SERIAL_ECHOPAIR(" Z", -zprobe_zoffset);
+    #else
+      if (!forReplay) {
+        SERIAL_ECHOPAIR("Z-Probe Offset (mm):", -zprobe_zoffset);
+      }
+    #endif
     SERIAL_EOL;
   #endif
 }

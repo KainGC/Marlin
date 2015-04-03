@@ -22,8 +22,7 @@ CardReader::CardReader() {
   autostart_index = 0;
   //power to SD reader
   #if SDPOWER > -1
-    SET_OUTPUT(SDPOWER);
-    WRITE(SDPOWER, HIGH);
+    OUT_WRITE(SDPOWER, HIGH);
   #endif //SDPOWER
 
   autostart_atmillis = millis() + 5000;
@@ -490,7 +489,7 @@ void CardReader::updir() {
   if (workDirDepth > 0) {
     --workDirDepth;
     workDir = workDirParents[0];
-    for (int d = 0; d < workDirDepth; d++)
+    for (uint16_t d = 0; d < workDirDepth; d++)
       workDirParents[d] = workDirParents[d+1];
   }
 }
@@ -505,7 +504,6 @@ void CardReader::printingHasFinished() {
     startFileprint();
   }
   else {
-    quickStop();
     file.close();
     sdprinting = false;
     if (SD_FINISHED_STEPPERRELEASE) {
